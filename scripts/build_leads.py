@@ -19,6 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "deliverables")
 XLSX = os.path.join(OUT, "Throne_Roofing_GC_Leads_2026-10-08.xlsx")
 CSV = os.path.join(OUT, "Throne_Roofing_Priority_Leads_2026-10-08.csv")
+REPORT = os.path.join(OUT, "Throne_Roofing_GC_Lead_Report_2026-10-08.md")
 
 HEADER_FILL = PatternFill("solid", fgColor="1F3864")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -223,6 +224,50 @@ def main():
     write_sheet(wb, "Provincial Requirements", d.REQ_COLUMNS, d.REQUIREMENTS)
     src = build_source_log(companies, contacts, projects, outreach, d.REQUIREMENTS)
     write_sheet(wb, "Source Log", ["Source ID", "URL", "Used For (Record IDs)", "Source Type", "Access Method", "Date Checked"], src)
+
+    # ---- one flat master table with every company, contact and project ----
+    master_cols = ["Record Type", "Record ID", "Linked Lead ID", "Name", "Organization", "City / Office", "Province",
+                   "Status", "Contact Name", "Contact Title", "Public Business Email", "Business Phone", "LinkedIn URL",
+                   "Closing Date", "Scope / Sectors", "Priority / Confidence", "Next Action", "Source URL 1", "Source URL 2",
+                   "Verification Date"]
+    rank = {r["Lead ID"]: r["Rank"] for r in outreach}
+    master = []
+    for c in companies:
+        master.append(["GC Company", c["Lead ID"], "", c["Company Name"], c["Verified Legal or Operating Name"],
+                       c["Head Office City"], c["Province"], f"Outreach priority: {c['Recommended Outreach Priority']}",
+                       c["Primary Target Contact"], c["Contact Job Title"], c["Public Business Email"], c["Business Phone"],
+                       c["LinkedIn URL"], "", c["Construction Sectors"],
+                       f"{c['Confidence Level']}; rank {rank.get(c['Lead ID'], 'not ranked')}",
+                       c["Next Action"], c["Source URL 1"], c["Source URL 2"], c["Verification Date"]])
+    for c in contacts:
+        master.append(["Contact", c[0], c[1], f"{c[3]} {c[4]}".strip() or c[5], c[2], c[7], "", c[14],
+                       f"{c[3]} {c[4]}".strip(), c[5], c[8], c[9], c[11], "", c[6], c[14], c[16],
+                       c[13], "", c[15]])
+    for p in projects:
+        master.append(["Project / Tender", p["Project ID"], "", p["Project Name"], p["Owner or Buyer"], p["City"],
+                       p["Province"], p["Tender Status"], p["Target Estimator or Project Contact"],
+                       f"GC: {p['Confirmed General Contractor']}", p["Public Business Email"], p["Business Phone"], "",
+                       f"{p['Closing Date']} {p['Closing Time and Time Zone']}".strip(), p["Roofing or Exterior Scope"],
+                       f"{p['Opportunity Channel']}; rank {rank.get(p['Project ID'], 'not ranked')}",
+                       p["Recommended Next Action"], p["Source URL 1"], p["Source URL 2"], p["Last Verified Date"]])
+    write_sheet(wb, "All Data (Master)", master_cols, master)
+    wb.move_sheet("All Data (Master)", offset=-(len(wb.sheetnames) - 2))
+
+    # ---- written report as its own sheet ----
+    rows = []
+    with open(REPORT, encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if line.strip() in ("---", ""):
+                continue
+            if line.startswith("|") and set(line.replace("|", "").strip()) <= set("-: "):
+                continue
+            rows.append([re.sub(r"\*\*|`", "", line)])
+    ws = write_sheet(wb, "Written Report", ["Throne Roofing - GC & Tender Lead Report (2026-10-08)"], rows)
+    ws.column_dimensions["A"].width = 160
+    for (cell,) in ws.iter_rows(min_row=2):
+        if str(cell.value).startswith("#"):
+            cell.font = Font(bold=True, size=12)
     wb.save(XLSX)
 
     with open(CSV, "w", newline="", encoding="utf-8") as f:
